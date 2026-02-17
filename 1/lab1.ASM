@@ -152,12 +152,29 @@ proc WindowProc uses ebx esi edi, hWnd,wMsg,wParam,lParam
 .Open:
         invoke        GetOpenFileName, ofnRead
         mov           [FileRead], szFileRead
+        invoke        SendMessage,[editOrigText],WM_SETTEXT,0,0
+        stdcall       ReadText
         jmp           .EndProc
 .Save:
         invoke        GetOpenFileName, ofnWrite
+        mov           [FileWrite], szFileWrite
+        invoke        GetWindowTextLength,[editResultText]
+        mov           ebx, eax
+        inc           ebx
+        invoke        GetProcessHeap
+        invoke        HeapAlloc, eax, HEAP_ZERO_MEMORY, ebx
+        mov           edi, eax
+        invoke        GetWindowText,[editResultText], edi, ebx
+        invoke        CreateFile, [FileWrite], GENERIC_WRITE, FILE_SHARE_WRITE, NULL, CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL, NULL
+        push          eax
+        invoke        WriteFile, eax , bom, 2,.nBytes, NULL
+        pop           eax
+        shl           ebx, 1
+        invoke        WriteFile, eax, edi,ebx , .nBytes, NULL
         jmp           .EndProc
 
 .Code:
+        invoke        SetWindowText, [editResultText], [Mas]
         jmp           .EndProc
 
 .Decode:
@@ -180,18 +197,49 @@ proc WindowProc uses ebx esi edi, hWnd,wMsg,wParam,lParam
 .nBytes                       dd      ?
 endp
 
-proc  ReadText
+proc ReadText
+        stdcall       ReadFileProc, [FileRead]
+        test          eax, eax
+        jz            .EndProc
 
-
-
+        invoke        SetWindowText, [editOrigText], [Mas]
 .EndProc:
         ret
+
+endp
+
+proc ReadFileProc uses ebx, Name
+        invoke        CreateFile,[Name], GENERIC_READ , FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+
+        push          eax
+        push          eax
+        invoke        GetFileSize, eax, NULL
+        mov           ebx, eax
+        add           ebx, 16
+        mov           [.FileSize], eax
+        invoke        GetProcessHeap
+        invoke        HeapAlloc, eax, HEAP_ZERO_MEMORY, ebx
+        mov           [Mas], eax
+        pop           eax
+        invoke        ReadFile, eax, [Mas], [.FileSize],.nBytes, NULL
+        pop           eax
+        invoke        CloseHandle, eax
+
+.EndProc:
+        mov           eax, [.FileSize]
+        mov           ebx, [Mas]
+        mov           word[ebx + eax], 0
+        ret
+
+.FileSize                     dd      0
+.nBytes                       dd      ?
 
 endp
 
 section '.data' data readable writeable
 
 wc                           WNDCLASS 0,WindowProc,0,0,NULL,NULL,NULL,COLOR_BTNFACE+1,NULL,_class
+bom                          dw      $FEFF
 _class                       du      'CipherLab', 0
 _title                       du      'CipherLab', 0
 _edit                        du      'EDIT',0
@@ -225,6 +273,8 @@ butnDecode                   dd      ?
 butnRemove                   dd      ?
 butnFile                     dd      ?
 FileRead                     dd      ?
+FileWrite                    dd      ?
+Mas                          dd      ?
 
 section '.idata' data import readable writeable
 
@@ -236,6 +286,14 @@ library kernel, 'kernel32.dll',\
 
 import kernel,\
             GetModuleHandle,'GetModuleHandleW',\
+            GetProcessHeap, 'GetProcessHeap',\
+            HeapAlloc,  'HeapAlloc',\
+            HeapFree, 'HeapFree',\
+            ReadFile, 'ReadFile',\
+            CreateFile, 'CreateFileW',\
+            GetFileSize, 'GetFileSize',\
+            CloseHandle, 'CloseHandle',\
+            WriteFile, 'WriteFile',\
             ExitProcess, 'ExitProcess'
 
 import user,\
@@ -251,6 +309,7 @@ import user,\
             TranslateMessage,'TranslateMessage',\
             GetWindowTextLength , 'GetWindowTextLengthW',\
             GetWindowText, 'GetWindowTextW',\
+            SetWindowText, 'SetWindowTextW', \
             PostQuitMessage,'PostQuitMessage'
 
 import gdi,\
