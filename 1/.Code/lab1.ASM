@@ -268,8 +268,10 @@ proc BuildOrder uses ecx esi edi, pKey, len, pOrder
         ret
 endp
 
+; =================================================================
+; СТОЛБЦОВЫЙ МЕТОД - ШИФРОВАНИЕ 
+; =================================================================
 proc EncryptC uses ebx esi edi
-        ; Получаем исходный текст
         invoke  GetWindowTextLength, [editOrigText]
         test    eax, eax
         jz      .done
@@ -283,24 +285,24 @@ proc EncryptC uses ebx esi edi
         inc     eax
         invoke  GetWindowText, [editOrigText], [tBuf], eax
 
-        ; Фильтрация: оставляем только буквы и пробелы
+        ; Фильтрация текста: оставляем только англ буквы и пробелы
         mov     eax, [tLen]
         inc     eax
         shl     eax, 1
         invoke  GetProcessHeap
         invoke  HeapAlloc, eax, HEAP_ZERO_MEMORY, eax
-        mov     [fBuf], eax     ; Буфер только для букв (для шифрования)
+        mov     [fBuf], eax     ; Только буквы
 
         mov     eax, [tLen]
         inc     eax
         shl     eax, 1
         invoke  GetProcessHeap
         invoke  HeapAlloc, eax, HEAP_ZERO_MEMORY, eax
-        mov     edi, eax        ; Буфер для букв и пробелов (для сборки)
+        mov     edi, eax        ; Буквы + пробелы
         
-        xor     ecx, ecx        ; Индекс по исходному tBuf
-        xor     ebx, ebx        ; Индекс по fBuf (только буквы)
-        xor     edx, edx        ; Индекс по edi (буквы + пробелы)
+        xor     ecx, ecx
+        xor     ebx, ebx
+        xor     edx, edx
 .doFilt:
         cmp     ecx, [tLen]
         jge     .fdone
@@ -316,13 +318,11 @@ proc EncryptC uses ebx esi edi
         ja      .skipCh
         sub     eax, 20h
         jmp     .isLet
-
 .chkUp:
         cmp     eax, 'A'
         jb      .skipCh
         cmp     eax, 'Z'
         ja      .skipCh
-
 .isLet:
         mov     esi, [fBuf]
         mov     word[esi + ebx*2], ax
@@ -330,29 +330,27 @@ proc EncryptC uses ebx esi edi
         mov     word[edi + edx*2], ax
         inc     edx
         jmp     .nextCh
-
 .isSpace:
         mov     word[edi + edx*2], ax
         inc     edx
         jmp     .nextCh
-
 .skipCh:
 .nextCh:
         inc     ecx
         jmp     .doFilt
 
 .fdone:
-        mov     [fLen], ebx     ; Кол-во букв
-        mov     [tLen], edx     ; Кол-во букв + пробелов
-        mov     [tBuf], edi     ; Перезаписываем tBuf на очищенный текст
+        mov     [fLen], ebx     
+        mov     [tLen], edx     
+        mov     [tBuf], edi     
 
-        ; Если нет ключа - возвращаем очищенный текст (буквы + пробелы)
+        ; Если в тексте нет букв вообще
+        test    ebx, ebx
+        jz      .noKeyC
+
+        ; Проверка ключа
         invoke  GetWindowTextLength, [editKey]
         test    eax, eax
-        jz      .noKeyC
-        
-        ; Если есть ключ, но нет букв (одни пробелы) - возвращаем пробелы
-        test    ebx, ebx
         jz      .noKeyC
 
         mov     [kLen], eax
@@ -365,25 +363,40 @@ proc EncryptC uses ebx esi edi
         inc     eax
         invoke  GetWindowText, [editKey], [kBuf], eax
 
-        ; Перевод ключа в верхний регистр
+        ; ФИЛЬТРАЦИЯ КЛЮЧА: оставляем ТОЛЬКО английские буквы
         xor     ecx, ecx
-.kUpLoop:
+        xor     edi, edi
+.kFiltLoop:
         cmp     ecx, [kLen]
-        jge     .kUpDone
+        jge     .kFiltDone
         mov     esi, [kBuf]
         movzx   eax, word[esi + ecx*2]
+        
         cmp     eax, 'a'
-        jb      .kUpSkip
+        jb      .kChkUp
         cmp     eax, 'z'
-        ja      .kUpSkip
+        ja      .kSkipCh
         sub     eax, 20h
-        mov     word[esi + ecx*2], ax
-.kUpSkip:
+        jmp     .kSave
+.kChkUp:
+        cmp     eax, 'A'
+        jb      .kSkipCh
+        cmp     eax, 'Z'
+        ja      .kSkipCh
+.kSave:
+        mov     word[esi + edi*2], ax
+        inc     edi
+.kSkipCh:
         inc     ecx
-        jmp     .kUpLoop
-.kUpDone:
+        jmp     .kFiltLoop
+.kFiltDone:
+        mov     [kLen], edi
 
-        ; Ранги
+        ; Если после фильтрации в ключе не осталось английских букв
+        test    edi, edi
+        jz      .noKeyC
+
+        ; Ранги ключа
         mov     eax, [kLen]
         shl     eax, 2
         invoke  GetProcessHeap
@@ -463,7 +476,7 @@ proc EncryptC uses ebx esi edi
         jmp     .cLoop
 .cDone:
 
-        ; Сборка с пробелами
+        ; Сборка
         mov     eax, [tLen]
         inc     eax
         shl     eax, 1
@@ -499,7 +512,6 @@ proc EncryptC uses ebx esi edi
         jmp     .done
 
 .noKeyC:
-        ; Возвращаем очищенный текст
         mov     esi, [tBuf]
         mov     ecx, [tLen]
         mov     word[esi + ecx*2], 0
@@ -509,6 +521,9 @@ proc EncryptC uses ebx esi edi
         ret
 endp
 
+; =================================================================
+; СТОЛБЦОВЫЙ МЕТОД - ДЕШИФРОВКА
+; =================================================================
 proc DecryptC uses ebx esi edi
         invoke  GetWindowTextLength, [editOrigText]
         test    eax, eax
@@ -523,6 +538,7 @@ proc DecryptC uses ebx esi edi
         inc     eax
         invoke  GetWindowText, [editOrigText], [tBuf], eax
 
+        ; Фильтрация текста
         mov     eax, [tLen]
         inc     eax
         shl     eax, 1
@@ -548,20 +564,17 @@ proc DecryptC uses ebx esi edi
 
         cmp     eax, ' '
         je      .isSpace
-
         cmp     eax, 'a'
         jb      .chkUp
         cmp     eax, 'z'
         ja      .skipCh
         sub     eax, 20h
         jmp     .isLet
-
 .chkUp:
         cmp     eax, 'A'
         jb      .skipCh
         cmp     eax, 'Z'
         ja      .skipCh
-
 .isLet:
         mov     esi, [fBuf]
         mov     word[esi + ebx*2], ax
@@ -569,12 +582,10 @@ proc DecryptC uses ebx esi edi
         mov     word[edi + edx*2], ax
         inc     edx
         jmp     .nextCh
-
 .isSpace:
         mov     word[edi + edx*2], ax
         inc     edx
         jmp     .nextCh
-
 .skipCh:
 .nextCh:
         inc     ecx
@@ -585,11 +596,11 @@ proc DecryptC uses ebx esi edi
         mov     [tLen], edx
         mov     [tBuf], edi
 
-        invoke  GetWindowTextLength, [editKey]
-        test    eax, eax
+        test    ebx, ebx
         jz      .noKeyC
 
-        test    ebx, ebx
+        invoke  GetWindowTextLength, [editKey]
+        test    eax, eax
         jz      .noKeyC
 
         mov     [kLen], eax
@@ -602,22 +613,37 @@ proc DecryptC uses ebx esi edi
         inc     eax
         invoke  GetWindowText, [editKey], [kBuf], eax
 
+        ; ФИЛЬТРАЦИЯ КЛЮЧА
         xor     ecx, ecx
-.kUpLoop:
+        xor     edi, edi
+.kFiltLoop:
         cmp     ecx, [kLen]
-        jge     .kUpDone
+        jge     .kFiltDone
         mov     esi, [kBuf]
         movzx   eax, word[esi + ecx*2]
+        
         cmp     eax, 'a'
-        jb      .kUpSkip
+        jb      .kChkUp
         cmp     eax, 'z'
-        ja      .kUpSkip
+        ja      .kSkipCh
         sub     eax, 20h
-        mov     word[esi + ecx*2], ax
-.kUpSkip:
+        jmp     .kSave
+.kChkUp:
+        cmp     eax, 'A'
+        jb      .kSkipCh
+        cmp     eax, 'Z'
+        ja      .kSkipCh
+.kSave:
+        mov     word[esi + edi*2], ax
+        inc     edi
+.kSkipCh:
         inc     ecx
-        jmp     .kUpLoop
-.kUpDone:
+        jmp     .kFiltLoop
+.kFiltDone:
+        mov     [kLen], edi
+
+        test    edi, edi
+        jz      .noKeyC
 
         mov     eax, [kLen]
         shl     eax, 2
@@ -745,6 +771,9 @@ proc DecryptC uses ebx esi edi
         ret
 endp
 
+; =================================================================
+; ВИЖЕНЕР - ШИФРОВАНИЕ
+; =================================================================
 proc EncryptV uses ebx esi edi
         invoke  GetWindowTextLength, [editOrigText]
         test    eax, eax
@@ -821,6 +850,7 @@ proc EncryptV uses ebx esi edi
         jmp     .kScan
 .kDone:
         mov     [vKeyLetters], edi
+        ; Если в ключе нет русских букв
         test    edi, edi
         jz      .noKeyV                   
 
@@ -979,6 +1009,9 @@ proc EncryptV uses ebx esi edi
         ret
 endp
 
+; =================================================================
+; ВИЖЕНЕР - ДЕШИФРОВКА
+; =================================================================
 proc DecryptV uses ebx esi edi
         invoke  GetWindowTextLength, [editOrigText]
         test    eax, eax
@@ -1211,6 +1244,7 @@ proc DecryptV uses ebx esi edi
 .done:
         ret
 endp
+
 
 section '.data' data readable writeable
 
