@@ -268,11 +268,6 @@ proc BuildOrder uses ecx esi edi, pKey, len, pOrder
         ret
 endp
 
-; =================================================================
-; СТОЛБЦОВЫЙ МЕТОД - ШИФРОВАНИЕ 
-; (Англ буквы шифруются, пробелы остаются, остальное УДАЛЯЕТСЯ)
-; Если ключа нет - выводит просто буквы+пробелы.
-; =================================================================
 proc EncryptC uses ebx esi edi
         ; Получаем исходный текст
         invoke  GetWindowTextLength, [editOrigText]
@@ -514,9 +509,6 @@ proc EncryptC uses ebx esi edi
         ret
 endp
 
-; =================================================================
-; СТОЛБЦОВЫЙ МЕТОД - ДЕШИФРОВКА
-; =================================================================
 proc DecryptC uses ebx esi edi
         invoke  GetWindowTextLength, [editOrigText]
         test    eax, eax
@@ -753,10 +745,6 @@ proc DecryptC uses ebx esi edi
         ret
 endp
 
-; =================================================================
-; ВИЖЕНЕР - ШИФРОВАНИЕ 
-; (Русские шифруются. Англ/цифры/знаки/пробелы ОСТАЮТСЯ. Если ключа нет - выводит текст)
-; =================================================================
 proc EncryptV uses ebx esi edi
         invoke  GetWindowTextLength, [editOrigText]
         test    eax, eax
@@ -952,7 +940,6 @@ proc EncryptV uses ebx esi edi
         jmp     .done
 
 .noKeyV:
-        ; ЕСЛИ КЛЮЧА НЕТ - просто переводим русские буквы в верхний регистр, остальное копируем
         mov     eax, [tLen]
         inc     eax
         shl     eax, 1
@@ -992,9 +979,6 @@ proc EncryptV uses ebx esi edi
         ret
 endp
 
-; =================================================================
-; ВИЖЕНЕР - ДЕШИФРОВКА
-; =================================================================
 proc DecryptV uses ebx esi edi
         invoke  GetWindowTextLength, [editOrigText]
         test    eax, eax
