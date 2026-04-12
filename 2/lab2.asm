@@ -85,7 +85,7 @@ proc WindowProc uses ebx esi edi ebp, hWnd,wMsg,wParam,lParam
         invoke        CreateWindowEx,0,_static,_OrigText,WS_VISIBLE+WS_CHILD,20,135,400,25,[hWnd],0,[wc.hInstance],NULL
         mov           [TextOrigText], eax
 
-        ; Снимаем ограничение длины (чтобы влезали большие файлы)
+        ; Снимаем ограничение длины
         invoke        SendMessage, [editOrigText], EM_SETLIMITTEXT, 0, 0
 
         invoke        SetWindowLong, [editSid], GWL_WNDPROC, EditSubclassProc
@@ -256,7 +256,7 @@ proc WindowProc uses ebx esi edi ebp, hWnd,wMsg,wParam,lParam
         ja            .BadData
         add           esi, 2
         loop          .CheckSid
-)
+
         mov           esi, [pText]
     .CheckTextLoop:
         mov           ax, [esi]
@@ -281,29 +281,35 @@ proc WindowProc uses ebx esi edi ebp, hWnd,wMsg,wParam,lParam
         test          ax, ax
         jz            .Final
 
-        mov           bx, [bufferSid+35*2]
-        mov           cx, [bufferSid+10*2]
-        mov           [edx], bx
+        ; --- АЛГОРИТМ LFSR: СДВИГ ВЛЕВО ---
+        ; 1. Берем самый левый бит (нулевой индекс) как бит ключа
+        mov           bx, [bufferSid]         
+        ; 2. Берем бит для полинома (индекс 25 для сохранения математики 36-го порядка)
+        mov           cx, [bufferSid+25*2]    
+        mov           [edx], bx               ; Записываем бит в поле Ключ
 
+        ; 3. Считаем обратную связь (XOR)
         push          ax bx
         sub           bx, '0'
         sub           cx, '0'
         xor           bx, cx
         add           bx, '0'
-        mov           bp, bx
+        mov           bp, bx                  ; bp = новый бит
         pop           bx ax
 
+        ; 4. Сдвигаем регистр ВЛЕВО
         push          esi edi
-        std
-        lea           esi, [bufferSid+34*2]
-        lea           edi, [bufferSid+35*2]
+        cld                                   ; Копируем слева направо (прямое направление)
+        lea           edi, [bufferSid]        ; КУДА: начиная с 0-го индекса
+        lea           esi, [bufferSid+2]      ; ОТКУДА: начиная с 1-го индекса
         mov           ecx, 35
-        rep movsw
-        cld
+        rep movsw                             ; Сдвигаем 35 элементов
         pop           edi esi
         
-        mov           [bufferSid], bp
+        ; 5. Записываем новый бит справа (в самый конец массива)
+        mov           [bufferSid+35*2], bp
 
+        ; 6. Шифруем символ: Исходный текст XOR Ключ
         sub           ax, '0'
         sub           bx, '0'
         xor           ax, bx
